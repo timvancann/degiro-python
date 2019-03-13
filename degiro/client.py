@@ -61,19 +61,27 @@ class DeGiro:
     @staticmethod
     @log_request
     def _perform_post(
-        session: Session, endpoint: Endpoint, override_url: str = None, override_payload=None, **params
+        session: Session,
+        endpoint: Endpoint,
+        override_url: str = None,
+        override_payload=None,
+        **params,
     ) -> Response:
         params_ = {_: params[_] for _ in endpoint.params}
         url = endpoint.url if not override_url else override_url
         logger.debug(f"Performing POST to {url} with {params_}")
         headers = {"content-type": "application/json"}
         return session.post(
-            url, headers=headers, data=json.dumps(params_ if not override_payload else override_payload)
+            url,
+            headers=headers,
+            data=json.dumps(params_ if not override_payload else override_payload),
         )
 
     @staticmethod
     @log_request
-    def _perform_get(session: Session, endpoint: Endpoint, override_url: str = None, **params) -> Response:
+    def _perform_get(
+        session: Session, endpoint: Endpoint, override_url: str = None, **params
+    ) -> Response:
         params_ = {_: params[_] for _ in endpoint.params}
         url = endpoint.url if not override_url else override_url
         logger.info(f"Performing GET to {url} with {params_}")
