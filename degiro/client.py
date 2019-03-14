@@ -25,9 +25,9 @@ def log_request(f):
 
 @dataclass(frozen=True)
 class Endpoint(object):
-    http_type: str
+    method: str
     url: str
-    params: List[str] = field(default_factory=lambda: [])
+    expected_params: List[str] = field(default_factory=lambda: [])
 
 
 class DeGiro:
@@ -60,32 +60,11 @@ class DeGiro:
 
     @staticmethod
     @log_request
-    def _perform_post(
-        session: Session,
-        endpoint: Endpoint,
-        override_url: str = None,
-        override_payload=None,
-        **params,
-    ) -> Response:
-        params_ = {_: params[_] for _ in endpoint.params}
-        url = endpoint.url if not override_url else override_url
-        logger.debug(f"Performing POST to {url} with {params_}")
-        headers = {"content-type": "application/json"}
-        return session.post(
-            url,
-            headers=headers,
-            data=json.dumps(params_ if not override_payload else override_payload),
-        )
-
-    @staticmethod
-    @log_request
-    def _perform_get(
-        session: Session, endpoint: Endpoint, override_url: str = None, **params
-    ) -> Response:
-        params_ = {_: params[_] for _ in endpoint.params}
-        url = endpoint.url if not override_url else override_url
-        logger.info(f"Performing GET to {url} with {params_}")
-        return session.get(url, params=params_)
+    def _perform_request(session: Session, method, url, params):
+        if method == "POST":
+            params = json.dumps(params)
+        logger.debug(f"Performing {method} to {url} with {params}")
+        session.request(method, url, params=params)
 
     def login(self, session: Session) -> str:
         """Login user to DeGiro and return session id.
@@ -100,9 +79,18 @@ class DeGiro:
             "isRedirectToMobile": False,
         }
 
-        response = self.query_endpoint(session, self._LOGIN, **payload)
+        response = self._perform_request(
+            session,
+            self._LOGIN.method,
+            self._LOGIN.url,
+            self._construct_params(self._LOGIN.expected_params, payload),
+        )
         session_id = self._get_session_id(response.headers)
         return session_id
+
+    @staticmethod
+    def _construct_params(expected_params, params):
+        return {_: params[_] for _ in expected_params}
 
     @staticmethod
     def _get_session_id(response_headers: dict) -> str:
@@ -113,7 +101,12 @@ class DeGiro:
 
     def account_data(self, session: Session, session_id: str) -> (str, dict):
 
-        response = self.query_endpoint(session=session, endpoint=self.CLIENT, sessionId=session_id)
+        response = self._perform_request(
+            session,
+            self.CLIENT.method,
+            self.CLIENT.url,
+            self._construct_params(self.CLIENT.expected_params, {"sessionId": session_id}),
+        )
 
         data = self._get_root_json(response)
         return (self._get_account_id(data), data)
@@ -126,20 +119,20 @@ class DeGiro:
     def _get_account_id(data: dict):
         return data["intAccount"]
 
-    def query_endpoint(self, session: Session, endpoint: Endpoint, **kwargs):
-        if endpoint.http_type == "GET":
-            return self._perform_get(session=session, endpoint=endpoint, **kwargs)
-        elif endpoint.http_type == "POST":
-            return self._perform_post(session=session, endpoint=endpoint, **kwargs)
-
     def transactions(self, session, session_id, account_id, from_date: date, to_date: date):
-        response = self.query_endpoint(
-            session=session,
-            endpoint=self.TRANSACTIONS,
-            sessionId=session_id,
-            intAccount=account_id,
-            fromDate=from_date.strftime("%d/%m/%Y"),
-            toDate=to_date.strftime("%d/%m/%Y"),
+        response = self._perform_request(
+            session,
+            self.TRANSACTIONS.method,
+            self.TRANSACTIONS.url,
+            self._construct_params(
+                self.CLIENT.expected_params,
+                dict(
+                    sessionId=session_id,
+                    intAccount=account_id,
+                    fromDate=from_date.strftime("%d/%m/%Y"),
+                    toDate=to_date.strftime("%d/%m/%Y"),
+                ),
+            ),
         )
 
         transactions = self._get_root_json(response)
@@ -154,21 +147,22 @@ class DeGiro:
         return transactions
 
     def products(self, session, session_id, account_id, ids):
-        response = self._perform_post(
-            session=session,
-            endpoint=self.PRODUCTS,
-            override_url=self.PRODUCTS.url.format(session_id=session_id, account_id=account_id),
-            override_payload=ids,
+        response = self._perform_request(
+            session,
+            self.PRODUCTS.method,
+            self.PRODUCTS.url.format(session_id=session_id, account_id=account_id),
+            ids,
         )
         return self._get_root_json(response)
 
     def portfolio(self, session, session_id, account_id):
-        response = self._perform_get(
-            session=session,
-            endpoint=self.PORTFOLIO,
-            override_url=self.PORTFOLIO.url.format(session_id=session_id, account_id=account_id),
-            portfolio=0,
-            totalPortfolio=0,
+        response = self._perform_request(
+            session,
+            self.PORTFOLIO.method,
+            self.PORTFOLIO.url.format(session_id=session_id, account_id=account_id),
+            self._construct_params(
+                self.PORTFOLIO.expected_params, dict(portfolio=0, totalPortfolio=0)
+            ),
         )
 
         def unpack(lst_of_dict):
