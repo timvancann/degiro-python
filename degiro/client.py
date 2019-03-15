@@ -46,7 +46,10 @@ class DeGiro:
     )
     PRODUCTS = Endpoint(
         "POST",
-        f"{ROOT_URL}/product_search/secure/v5/products/info?sessionId={{session_id}}&intAccount={{account_id}}",
+        (
+            "{ROOT_URL}/product_search/secure/v5/products/info"
+            "?sessionId={{session_id}}&intAccount={{account_id}}"
+        ).format(ROOT_URL=ROOT_URL),
     )
     PORTFOLIO = Endpoint(
         "GET",

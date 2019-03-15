@@ -1,0 +1,23 @@
+stages:
+  - test
+  - name: deploy
+    if: branch = master
+
+dist: xenial
+language: python
+python: 3.7
+
+install:
+  - pip install flake8==3.7.7
+
+jobs:
+  include:
+    - stage: test
+      script: python setup.py test
+      name: Pytest
+    - stage: test
+      script: flake8 --max-line-length 100
+      name: Linting
+    - stage: deploy
+      script:
+      - python setup.py sdist bdist_wheel
